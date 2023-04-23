@@ -4,7 +4,9 @@ import pytz
 from datetime import datetime
 from send_slack_msg import send_slack_notification
 import sys
+import json
 from random import choice
+from tqdm import tqdm
 from argparse import ArgumentParser, FileType
 from configparser import ConfigParser
 from confluent_kafka import Producer
@@ -34,9 +36,9 @@ if __name__ == '__main__':
     def delivery_callback(err, msg):
         if err:
             print('ERROR: Message failed delivery: {}'.format(err))
-        else:
-            print("Produced event to topic {topic}: key = {key:12} value = {value:12}".format(
-                topic=msg.topic(), key=msg.key().decode('utf-8'), value=msg.value().decode('utf-8')))
+        #else:
+            # print("Produced event to topic {topic}: key = {key:12} value = {value:12}".format(
+                #topic=msg.topic(), key=msg.key().decode('utf-8'), value=msg.value().decode('utf-8')))
 
 
     def retrieve_and_save():
@@ -53,22 +55,42 @@ if __name__ == '__main__':
         except:
             return f"There was an issue retrieving or storing today's Trimet data."
 
-    
 
     def parse_json(filename):
-        with open("data-archive2023-04-21.json", "r") as read_file:
+        with open("data-archive/2023-04-21.json", "r") as read_file:
         # with open(filename, "r") as read_file:
-        data = json.load(read_file)
+            data = json.load(read_file)
         return data
 
-    result = retrieve_and_save()
+    def produce_data(data_list):
+        #producer.produce(topic, json.dumps(data_list), callback=delivery_callback)
+        #producer.flush()
+        #return
+        length = len(data_list)
+        print(length)
+        bar = tqdm(total=length)
+        for i in range(length):
+            if(i % 10000 == 0):
+                producer.flush()
+            bar.update(1)
+            data = json.dumps(data_list[i])
+            # print("Data:", data)
+            producer.produce(topic, value=data, callback=delivery_callback)
+        producer.flush()
+
+        # Block until the messages are sent.   
+        # producer.poll(10000)
+
+
+
+    # result = retrieve_and_save()
     # send_slack_notification(result)
     # Produce data by selecting random values from these lists.
     topic = "breadcrumbs_readings"
     data_parsed = parse_json(None)
-    producer.produce(topic, data, callback=delivery_callback)
+    produce_data(data_parsed)
 
-    # Block until the messages are sent.
-    producer.poll(10000)
-    producer.flush()
+
+
+
 
